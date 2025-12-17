@@ -13,7 +13,6 @@ import {
   ThinkingLevel,
   Type,
 } from "@google/genai";
-import OpenAI from "openai";
 import { getSettings } from "src/plugin";
 import { Message, Attachment, ToolCall } from "src/types/chat";
 import { prepareModelInputs, buildChatHistory } from "src/backend/managers/prompts/inputs";
@@ -254,13 +253,8 @@ async function callOpenAIAgent(
 ) {
     const settings = getSettings();
     const apiKey = settings.provider === "openrouter" ? settings.openRouterApiKey : "ollama";
-    const baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
-
-    const openai = new OpenAI({
-        apiKey: apiKey,
-        baseURL: baseURL,
-        dangerouslyAllowBrowser: true,
-    });
+    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
+    if (baseURL.endsWith("/")) baseURL = baseURL.slice(0, -1);
 
     // Prepare tools
     const tools = callableFunctionDeclarations.map(decl => ({
@@ -304,34 +298,70 @@ async function callOpenAIAgent(
     const maxTurns = 5;
 
     while (turn < maxTurns) {
-        const stream = await openai.chat.completions.create({
+        const body = {
             model: settings.model,
-            messages: messages as any,
+            messages: messages,
             tools: tools,
             stream: true,
             temperature: settings.temperature !== "Default" ? Number(settings.temperature) : 1,
             max_tokens: settings.maxOutputTokens !== "Default" ? Number(settings.maxOutputTokens) : undefined,
+        };
+
+        const response = await fetch(`${baseURL}/chat/completions`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(body),
         });
 
+        if (!response.ok) {
+             throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+        }
+
+        if (!response.body) throw new Error("No response body");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
         let accumulatedContent = "";
         let toolCalls: any[] = [];
+        let buffer = "";
 
-        for await (const chunk of stream) {
-            const delta = chunk.choices[0].delta;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-            if (delta.content) {
-                accumulatedContent += delta.content;
-                updateAiMessage(delta.content, "", []);
-            }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-            if (delta.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                    if (tc.index !== undefined) {
-                        if (!toolCalls[tc.index]) {
-                            toolCalls[tc.index] = { id: tc.id, function: { name: "", arguments: "" } };
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed === "data: [DONE]") continue;
+                if (trimmed.startsWith("data: ")) {
+                    try {
+                        const data = JSON.parse(trimmed.slice(6));
+                        const delta = data.choices[0].delta;
+
+                        if (delta.content) {
+                            accumulatedContent += delta.content;
+                            updateAiMessage(delta.content, "", []);
                         }
-                        if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
-                        if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+
+                        if (delta.tool_calls) {
+                            for (const tc of delta.tool_calls) {
+                                if (tc.index !== undefined) {
+                                    if (!toolCalls[tc.index]) {
+                                        toolCalls[tc.index] = { id: tc.id, function: { name: "", arguments: "" } };
+                                    }
+                                    if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                                    if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error parsing SSE", e);
                     }
                 }
             }

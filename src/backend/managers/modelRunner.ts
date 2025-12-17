@@ -10,7 +10,7 @@ import {
   GenerateContentResponse,
   ThinkingLevel,
 } from "@google/genai";
-import OpenAI from "openai";
+import { requestUrl } from "obsidian";
 import { getSettings } from "src/plugin";
 import { DEFAULT_SETTINGS } from "src/settings/SettingsTab";
 import { prepareModelInputs } from "src/backend/managers/prompts/inputs";
@@ -83,13 +83,10 @@ export async function callModel(
   } else {
     // OpenRouter or Local
     const apiKey = settings.provider === "openrouter" ? settings.openRouterApiKey : "ollama";
-    const baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
+    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
 
-    const openai = new OpenAI({
-      apiKey: apiKey,
-      baseURL: baseURL,
-      dangerouslyAllowBrowser: true,
-    });
+    // Ensure baseURL doesn't end with slash
+    if (baseURL.endsWith("/")) baseURL = baseURL.slice(0, -1);
 
     const content: any[] = [{ type: "text", text: user }];
     for (const file of files) {
@@ -102,18 +99,35 @@ export async function callModel(
       });
     }
 
+    const messages = [
+      { role: "system", content: system },
+      { role: "user", content: content },
+    ];
+
+    const body = {
+      model: settings.model,
+      messages: messages,
+      temperature: settings.temperature !== "Default" ? Number(settings.temperature) : 1,
+      max_tokens: settings.maxOutputTokens !== "Default" ? Number(settings.maxOutputTokens) : undefined,
+    };
+
     try {
-      const completion = await openai.chat.completions.create({
-        model: settings.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: content as any },
-        ],
-        temperature: settings.temperature !== "Default" ? Number(settings.temperature) : 1,
-        max_tokens: settings.maxOutputTokens !== "Default" ? Number(settings.maxOutputTokens) : undefined,
+      const response = await requestUrl({
+        url: `${baseURL}/chat/completions`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
       });
 
-      return completion.choices[0].message.content || "";
+      if (response.status >= 400) {
+        throw new Error(`API Error: ${response.status} - ${response.text}`);
+      }
+
+      const data = response.json;
+      return data.choices[0].message.content || "";
     } catch (error) {
        throw new Error(`API Error: ${String(error)}`);
     }
