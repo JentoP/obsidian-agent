@@ -1,7 +1,7 @@
 import { SafetySetting } from "@google/generative-ai"; 
 
 export interface Model {
-  provider: "google",
+  provider: "google" | "openrouter" | "local",
   name: string,
   capabilities: Array<"vision" | "reasoning" | "websearch">,
   description: string,

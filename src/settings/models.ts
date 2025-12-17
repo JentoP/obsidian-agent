@@ -32,4 +32,28 @@ export const allAvailableModels: Model[] = [
     capabilities: ["vision", "websearch"],
     description: "The best model in the world for multimodal understanding, and our most powerful agentic and vibe-coding model yet, delivering richer visuals and deeper interactivity, all built on a foundation of state-of-the-art reasoning.",
   },
+  {
+    provider: "openrouter",
+    name: "anthropic/claude-3.5-sonnet",
+    capabilities: ["vision", "websearch"],
+    description: "Anthropic's most intelligent model.",
+  },
+  {
+    provider: "openrouter",
+    name: "openai/gpt-4o",
+    capabilities: ["vision", "websearch"],
+    description: "OpenAI's flagship model.",
+  },
+  {
+    provider: "openrouter",
+    name: "google/gemini-2.0-flash-001",
+    capabilities: ["vision", "websearch"],
+    description: "Google's Gemini 2.0 Flash via OpenRouter.",
+  },
+  {
+    provider: "local",
+    name: "local-model",
+    capabilities: ["vision"],
+    description: "A local model running on your machine (e.g. via Ollama). Configure URL in settings.",
+  },
 ];

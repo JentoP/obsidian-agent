@@ -8,6 +8,8 @@ export interface AgentSettings {
   provider: string;
   model: string;
   googleApiKey: string;
+  openRouterApiKey: string;
+  localModelUrl: string;
   temperature: string;
   thinkingLevel: string;
   maxOutputTokens: string;
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS: AgentSettings = {
   provider: "google",
   model: "gemini-2.5-flash",
   googleApiKey: "",
+  openRouterApiKey: "",
+  localModelUrl: "http://localhost:11434/v1",
   temperature: "Default",
   thinkingLevel: "Default",
   maxOutputTokens: "Default",
@@ -94,6 +98,46 @@ export class AgentSettingsTab extends PluginSettingTab {
           btn.setIcon(googleRevealed ? "eye-off" : "eye");
         });
     });
+
+    // OPENROUTER
+    const openRouterSetting = new Setting(containerEl)
+      .setName("OpenRouter api key")
+      .setDesc("Enter your OpenRouter API key.");
+    let openRouterRevealed = false;
+    openRouterSetting.addText((text) => {
+      text
+        .setPlaceholder("Enter your API key.")
+        .setValue(this.plugin.settings.openRouterApiKey)
+        .onChange(async (value) => {
+          this.plugin.settings.openRouterApiKey = value;
+          await this.plugin.saveSettings();
+        });
+      text.inputEl.type = "password";
+    });
+    openRouterSetting.addExtraButton((btn) => {
+      btn.setIcon("eye")
+        .setTooltip("Show/hide api key")
+        .onClick(() => {
+          openRouterRevealed = !openRouterRevealed;
+          const input = openRouterSetting.controlEl.querySelector("input");
+          if (input) input.type = openRouterRevealed ? "text" : "password";
+          btn.setIcon(openRouterRevealed ? "eye-off" : "eye");
+        });
+    });
+
+    // LOCAL
+    new Setting(containerEl)
+      .setName("Local model URL")
+      .setDesc("Enter the URL of your local model (e.g. http://localhost:11434/v1).")
+      .addText((text) =>
+        text
+          .setPlaceholder("Enter your local model URL.")
+          .setValue(this.plugin.settings.localModelUrl)
+          .onChange(async (value) => {
+            this.plugin.settings.localModelUrl = value;
+            await this.plugin.saveSettings();
+          })
+      );
 
     // LLM settings
     new Setting(containerEl)

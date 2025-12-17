@@ -11,14 +11,16 @@ import {
   HarmBlockThreshold,
   ApiError,
   ThinkingLevel,
+  Type,
 } from "@google/genai";
+import OpenAI from "openai";
 import { getSettings } from "src/plugin";
 import { Message, Attachment, ToolCall } from "src/types/chat";
 import { prepareModelInputs, buildChatHistory } from "src/backend/managers/prompts/inputs";
 import { agentSystemPrompt } from "src/backend/managers/prompts/library";  
 import { callableFunctionDeclarations, executeFunction } from "src/backend/managers/functionRunner";
 import { DEFAULT_SETTINGS } from "src/settings/SettingsTab";
-
+import { imageToBase64 } from "src/utils/parsing/imageBase64";
 
 // Function that calls the agent with chat history and tools binded
 export async function callAgent(
@@ -29,6 +31,11 @@ export async function callAgent(
   updateAiMessage: (m: string, r: string, t: ToolCall[]) => void,
 ): Promise<void> {
   const settings = getSettings();
+
+  if (settings.provider !== "google") {
+    await callOpenAIAgent(conversation, message, attachments, files, updateAiMessage);
+    return;
+  }
 
   // Initialize model and its configuration
   const config: GoogleGenAIOptions = { apiKey: settings.googleApiKey, apiVersion: "v1beta" };
@@ -236,4 +243,211 @@ async function manageFunctionCall(
     updateAiMessage, 
     executedFunctionIds
   );
+}
+
+async function callOpenAIAgent(
+  conversation: Message[],
+  message: string,
+  attachments: Attachment[],
+  files: File[],
+  updateAiMessage: (m: string, r: string, t: ToolCall[]) => void,
+) {
+    const settings = getSettings();
+    const apiKey = settings.provider === "openrouter" ? settings.openRouterApiKey : "ollama";
+    const baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
+
+    const openai = new OpenAI({
+        apiKey: apiKey,
+        baseURL: baseURL,
+        dangerouslyAllowBrowser: true,
+    });
+
+    // Prepare tools
+    const tools = callableFunctionDeclarations.map(decl => ({
+        type: "function" as const,
+        function: {
+            name: decl.name,
+            description: decl.description,
+            parameters: convertSchema(decl.parameters)
+        }
+    }));
+
+    // Prepare messages
+    const messages = await buildOpenAIChatHistory(conversation);
+    messages.unshift({ role: "system", content: agentSystemPrompt });
+
+    // Add current user message
+    let content: any[] = [{ type: "text", text: message }];
+    if (attachments.length > 0) {
+        let attachmentText = "\n###\nAttached Obsidian notes: ";
+        for (const note of attachments) {
+            attachmentText += `\n${note.path}`;
+        }
+        attachmentText += `\n###\n`;
+        content[0].text += attachmentText;
+    }
+
+    for (const file of files) {
+        const base64 = await imageToBase64(file);
+        content.push({
+            type: "image_url",
+            image_url: {
+                url: `data:${file.type};base64,${base64.replace(/^data:.*;base64,/, "")}`
+            }
+        });
+    }
+
+    messages.push({ role: "user", content: content });
+
+    // Main loop
+    let turn = 0;
+    const maxTurns = 5;
+
+    while (turn < maxTurns) {
+        const stream = await openai.chat.completions.create({
+            model: settings.model,
+            messages: messages as any,
+            tools: tools,
+            stream: true,
+            temperature: settings.temperature !== "Default" ? Number(settings.temperature) : 1,
+            max_tokens: settings.maxOutputTokens !== "Default" ? Number(settings.maxOutputTokens) : undefined,
+        });
+
+        let accumulatedContent = "";
+        let toolCalls: any[] = [];
+
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0].delta;
+
+            if (delta.content) {
+                accumulatedContent += delta.content;
+                updateAiMessage(delta.content, "", []);
+            }
+
+            if (delta.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                    if (tc.index !== undefined) {
+                        if (!toolCalls[tc.index]) {
+                            toolCalls[tc.index] = { id: tc.id, function: { name: "", arguments: "" } };
+                        }
+                        if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                        if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                    }
+                }
+            }
+        }
+
+        if (toolCalls.length > 0) {
+            // Add assistant message with tool calls
+            messages.push({
+                role: "assistant",
+                content: accumulatedContent || null,
+                tool_calls: toolCalls.map(tc => ({
+                    id: tc.id,
+                    type: "function",
+                    function: tc.function
+                }))
+            });
+
+            // Execute tools
+            for (const tc of toolCalls) {
+                const funcName = tc.function.name;
+                let funcArgs = {};
+                try {
+                    funcArgs = JSON.parse(tc.function.arguments);
+                } catch (e) {
+                    console.error("Failed to parse tool arguments", e);
+                }
+
+                const googleFuncCall = { name: funcName, args: funcArgs };
+                const response = await executeFunction(googleFuncCall);
+
+                updateAiMessage("", "", [{
+                    name: funcName,
+                    args: funcArgs,
+                    response: response
+                }]);
+
+                messages.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(response)
+                });
+            }
+            turn++;
+        } else {
+            // No tool calls, we are done
+            break;
+        }
+    }
+}
+
+function convertSchema(schema: any): any {
+    if (!schema) return undefined;
+
+    const newSchema: any = { ...schema };
+    if (newSchema.type) {
+        if (newSchema.type === Type.STRING) newSchema.type = "string";
+        else if (newSchema.type === Type.NUMBER) newSchema.type = "number";
+        else if (newSchema.type === Type.INTEGER) newSchema.type = "integer";
+        else if (newSchema.type === Type.BOOLEAN) newSchema.type = "boolean";
+        else if (newSchema.type === Type.ARRAY) newSchema.type = "array";
+        else if (newSchema.type === Type.OBJECT) newSchema.type = "object";
+    }
+
+    if (newSchema.properties) {
+        for (const key in newSchema.properties) {
+            newSchema.properties[key] = convertSchema(newSchema.properties[key]);
+        }
+    }
+    if (newSchema.items) {
+        newSchema.items = convertSchema(newSchema.items);
+    }
+
+    return newSchema;
+}
+
+async function buildOpenAIChatHistory(conversation: Message[]): Promise<any[]> {
+    const settings = getSettings();
+    const maxHistoryTurns = settings.maxHistoryTurns;
+    if (maxHistoryTurns === 0) return [];
+
+    let selectedMessages = conversation.slice(-maxHistoryTurns * 2);
+    const history: any[] = [];
+
+    for (const msg of selectedMessages) {
+        if (msg.sender === "error") continue;
+
+        if (msg.sender === "user") {
+             history.push({ role: "user", content: msg.content });
+        } else if (msg.sender === "bot") {
+             if (msg.toolCalls && msg.toolCalls.length > 0) {
+                 const toolCalls = msg.toolCalls.map((tc, idx) => ({
+                     id: `call_${idx}`,
+                     type: "function",
+                     function: {
+                         name: tc.name,
+                         arguments: JSON.stringify(tc.args)
+                     }
+                 }));
+
+                 history.push({
+                     role: "assistant",
+                     content: msg.content || null,
+                     tool_calls: toolCalls
+                 });
+
+                 for (let i = 0; i < msg.toolCalls.length; i++) {
+                     history.push({
+                         role: "tool",
+                         tool_call_id: `call_${i}`,
+                         content: JSON.stringify(msg.toolCalls[i].response)
+                     });
+                 }
+             } else {
+                 history.push({ role: "assistant", content: msg.content });
+             }
+        }
+    }
+    return history;
 }
