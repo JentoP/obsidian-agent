@@ -16,18 +16,19 @@ export class ObsidianAgentPlugin extends Plugin {
 
   // Method that loads the plugin
   async onload() {
-    pluginInstance = this;
-    setPlugin(this);
+    try {
+      pluginInstance = this;
+      setPlugin(this);
 
-    // Add settings tab
-    await this.loadSettings();
-    this.addSettingTab(new AgentSettingsTab(this.app, this));
+      // Add settings tab
+      await this.loadSettings();
+      this.addSettingTab(new AgentSettingsTab(this.app, this));
 
-    // Add agent chat view
-    this.registerView(VIEW_TYPE_AGENT, (leaf) => new ChatView(leaf, this)); 
-    this.app.workspace.onLayoutReady(async () => {
-      await this.ensureAgentViewExists();
-    });
+      // Add agent chat view
+      this.registerView(VIEW_TYPE_AGENT, (leaf) => new ChatView(leaf, this));
+      this.app.workspace.onLayoutReady(async () => {
+        await this.ensureAgentViewExists();
+      });
 
     // Add sidebar ribon icon that shows the view
     this.addRibbonIcon('brain-cog', 'Chat with Agent', () => {
@@ -61,6 +62,10 @@ export class ObsidianAgentPlugin extends Plugin {
 
     // Menu Items (Actions when right click on a markdown view)
     registerEditorMenuItems(this);
+    } catch (error) {
+      console.error("Obsidian Agent Plugin failed to load:", error);
+      throw error;
+    }
   }
 
   async loadSettings() {
