@@ -253,7 +253,7 @@ async function callOpenAIAgent(
 ) {
     const settings = getSettings();
     const apiKey = settings.provider === "openrouter" ? settings.openRouterApiKey : "ollama";
-    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
+    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : (settings.localModelUrl || "http://localhost:11434/v1");
     if (baseURL.endsWith("/")) baseURL = baseURL.slice(0, -1);
 
     // Prepare tools

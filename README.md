@@ -32,13 +32,17 @@ It features a user-friendly UI, inspired by other agentic apps.
 
 1. Download from **Community Plugins** in Obsidian or clone the repository inside your `~/vault/.obsidian/plugins/` folder.
 2. Enable the plugin from Obsidian's settings panel.
-3. Add the corresponding Google API key in the plugin's settings panel.
+3. Configure your preferred provider in the settings:
+    - **Google Gemini**: Add your Google API key.
+    - **OpenRouter**: Add your OpenRouter API key.
+    - **Local**: Configure your local model URL (e.g., `http://localhost:11434/v1` for Ollama).
 
-> Make sure you have an API key from Google with the Gemini service enable.
+> Make sure you have the necessary API keys or local server running.
 
 
 ## ✨ Core Features
 <ul>
+  <li><b>Multi-provider Support:</b> Use Google Gemini, OpenRouter, or local models (Ollama).</li>
   <li><b>Note Reading:</b> Understands and edit your notes.</li>
   <li><b>Web search:</b> Search information across the web.</li>
   <li><b>Customizable:</b> Tweak agent rules to fit your workflow.</li>
@@ -62,12 +66,12 @@ The agent can use the following tools to interact with your vault:
 Also you can right click over select text, in your markdown notes, to summarize or ask the agent about the selection.
 
 ## 🟡 Disclosures
-This plugin connects to remote Google AI services to process your requests.
+This plugin connects to remote AI services (Google, OpenRouter) or local servers to process your requests.
 
 > **Why is this needed?**  
-> The AI models that power these features run on external servers and require an internet connection. Your notes or queries are sent securely to the selected provider for processing, and the results are only returned to your vault.
+> The AI models that power these features run on external servers (or your local machine) and require a connection. Your notes or queries are sent securely to the selected provider for processing, and the results are only returned to your vault.
 
-To use these AI service, you must set a Google API key. You are responsible for obtaining and managing your API keys.
+To use cloud-based AI services, you must set the corresponding API key. You are responsible for obtaining and managing your API keys.
 
 ## 🫱🏼‍🫲🏼 Contributing & Support
 

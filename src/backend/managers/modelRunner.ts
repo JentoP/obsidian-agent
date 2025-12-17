@@ -83,7 +83,7 @@ export async function callModel(
   } else {
     // OpenRouter or Local
     const apiKey = settings.provider === "openrouter" ? settings.openRouterApiKey : "ollama";
-    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : settings.localModelUrl;
+    let baseURL = settings.provider === "openrouter" ? "https://openrouter.ai/api/v1" : (settings.localModelUrl || "http://localhost:11434/v1");
 
     // Ensure baseURL doesn't end with slash
     if (baseURL.endsWith("/")) baseURL = baseURL.slice(0, -1);

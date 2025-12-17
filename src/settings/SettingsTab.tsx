@@ -56,7 +56,7 @@ export class AgentSettingsTab extends PluginSettingTab {
     // Language model settings
     new Setting(containerEl)
       .setName("Model")
-      .setDesc("Select the Google language model to use.")
+      .setDesc("Select the language model to use.")
       .addButton((button) => {
         button.setButtonText(this.plugin.settings.model || "Choose model");
         button.onClick(() => {
@@ -302,7 +302,10 @@ export class AgentSettingsTab extends PluginSettingTab {
     .addButton((button) => {
       button.setButtonText("Reset");
       button.onClick(async () => {
+        this.plugin.settings.provider = DEFAULT_SETTINGS.provider;
         this.plugin.settings.model = DEFAULT_SETTINGS.model;
+        this.plugin.settings.openRouterApiKey = DEFAULT_SETTINGS.openRouterApiKey;
+        this.plugin.settings.localModelUrl = DEFAULT_SETTINGS.localModelUrl;
         this.plugin.settings.temperature = DEFAULT_SETTINGS.temperature;
         this.plugin.settings.thinkingLevel = DEFAULT_SETTINGS.thinkingLevel;
         this.plugin.settings.maxOutputTokens = DEFAULT_SETTINGS.maxOutputTokens;
